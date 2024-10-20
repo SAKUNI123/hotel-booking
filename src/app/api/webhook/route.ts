@@ -22,8 +22,11 @@ export async function POST(req: Request) {
     }
 
     event = stripe.webhooks.constructEvent(reqBody, sig, webhookSecret);
-  } catch (error: any) {
-    return new NextResponse(`Webhook Error: ${error.message}`, { status: 500 });
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      return new NextResponse(`Webhook Error: ${error.message}`, { status: 500 });
+    }
+    return new NextResponse('Webhook Error: An unknown error occurred', { status: 500 });
   }
 
   // Process the event
@@ -31,20 +34,23 @@ export async function POST(req: Request) {
     case checkout_session_completed:
       const session = event.data.object;
 
+      // Check if metadata exists
+      const metadata = session.metadata;
+      if (!metadata) {
+        return new NextResponse('Metadata is missing', { status: 400 });
+      }
+
       const {
-        // @ts-expect-error: The Stripe API may not provide complete type definitions for this object
-        metadata: {
-          adults,
-          checkinDate,
-          checkoutDate,
-          children,
-          hotelRoom,
-          numberOfDays,
-          user,
-          discount,
-          totalPrice,
-        },
-      } = session;
+        adults,
+        checkinDate,
+        checkoutDate,
+        children,
+        hotelRoom,
+        numberOfDays,
+        user,
+        discount,
+        totalPrice,
+      } = metadata;
 
       await createBooking({
         adults: Number(adults),
