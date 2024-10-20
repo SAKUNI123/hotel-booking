@@ -10,7 +10,7 @@ import {
 } from '@/libs/apis';
 
 // Handle GET request
-export async function GET(req: Request) {
+export async function GET() {
   // Fetch session
   const session = await getServerSession(authOptions);
 
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
 
   try {
     // Parse the request body
-    const { roomId, reviewText, ratingValue } = await req.json();
+    const { roomId, reviewText, ratingValue }: { roomId: string; reviewText: string; ratingValue: number } = await req.json();
 
     // Check if all required fields are provided
     if (!roomId || !reviewText || !ratingValue) {
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(data, { status: 200, statusText: 'Successful' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating/updating review:', error);
     return new NextResponse('Unable to create or update review', { status: 500 });
   }

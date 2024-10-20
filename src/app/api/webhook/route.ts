@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     if (!sig || !webhookSecret) {
       return new NextResponse('Missing webhook signature or secret', { status: 400 });
     }
-    
+
     event = stripe.webhooks.constructEvent(reqBody, sig, webhookSecret);
   } catch (error: any) {
     return new NextResponse(`Webhook Error: ${error.message}`, { status: 500 });
@@ -32,8 +32,7 @@ export async function POST(req: Request) {
       const session = event.data.object;
 
       const {
-        // @ts-expect-error
-
+        // @ts-expect-error: The Stripe API may not provide complete type definitions for this object
         metadata: {
           adults,
           checkinDate,

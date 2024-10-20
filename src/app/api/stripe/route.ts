@@ -4,57 +4,63 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import Stripe from 'stripe';
 
+// Initialize Stripe with the secret key and API version
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: '2024-09-30.acacia', // Ensure this version is correct
 });
 
-type RequestData = {
+// Define the expected structure for request data
+interface RequestData {
   checkinDate: string;
   checkoutDate: string;
   adults: number;
   children: number;
   numberOfDays: number;
   hotelRoomSlug: string;
-};
+}
 
-export async function POST(req: Request, res: Response) {
-  const {
-    checkinDate,
-    adults,
-    checkoutDate,
-    children,
-    hotelRoomSlug,
-    numberOfDays,
-  }: RequestData = await req.json();
-
-  if (
-    !checkinDate ||
-    !checkoutDate ||
-    !adults ||
-    !hotelRoomSlug ||
-    !numberOfDays
-  ) {
-    return new NextResponse('Please all fields are required', { status: 400 });
-  }
-
-  const origin = req.headers.get('origin');
-
-  const session = await getServerSession(authOptions);
-
-  if (!session) {
-    return new NextResponse('Authentication required', { status: 400 });
-  }
-
-  const userId = session.user.id;
-  const formattedCheckoutDate = checkoutDate.split('T')[0];
-  const formattedCheckinDate = checkinDate.split('T')[0];
-
+export async function POST(req: Request) {
   try {
+    // Parse the request body and validate fields
+    const {
+      checkinDate,
+      checkoutDate,
+      adults,
+      children,
+      hotelRoomSlug,
+      numberOfDays,
+    }: RequestData = await req.json();
+
+    // Validate the required fields
+    if (!checkinDate || !checkoutDate || !adults || !hotelRoomSlug || !numberOfDays) {
+      return new NextResponse('All fields are required', { status: 400 });
+    }
+
+    const origin = req.headers.get('origin');
+    const session = await getServerSession(authOptions);
+
+    // If user is not authenticated, return a 401 response
+    if (!session) {
+      return new NextResponse('Authentication required', { status: 401 });
+    }
+
+    const userId = session.user.id;
+
+    // Format dates for Stripe metadata
+    const formattedCheckoutDate = checkoutDate.split('T')[0];
+    const formattedCheckinDate = checkinDate.split('T')[0];
+
+    // Fetch the room details using the provided slug
     const room = await getRoom(hotelRoomSlug);
+    if (!room) {
+      return new NextResponse('Room not found', { status: 404 });
+    }
+
+    // Calculate the discounted price and total price
     const discountPrice = room.price - (room.price / 100) * room.discount;
     const totalPrice = discountPrice * numberOfDays;
 
-    // Create a stripe payment
+    // Create a new Stripe checkout session
     const stripeSession = await stripe.checkout.sessions.create({
       mode: 'payment',
       line_items: [
@@ -66,31 +72,39 @@ export async function POST(req: Request, res: Response) {
               name: room.name,
               images: room.images?.map(image => image.url) || [],
             },
-            unit_amount: parseInt((totalPrice * 100).toString()),
+            unit_amount: Math.round(totalPrice * 100), // Convert to cents for Stripe
           },
         },
       ],
       payment_method_types: ['card'],
       success_url: `${origin}/users/${userId}`,
       metadata: {
-        adults,
+        adults: adults.toString(),
         checkinDate: formattedCheckinDate,
         checkoutDate: formattedCheckoutDate,
-        children,
+        children: children.toString(),
         hotelRoom: room._id,
-        numberOfDays,
+        numberOfDays: numberOfDays.toString(),
         user: userId,
-        discount: room.discount,
-        totalPrice,
+        discount: room.discount.toString(),
+        totalPrice: totalPrice.toString(),
       },
     });
 
+    // Return the created Stripe session as JSON
     return NextResponse.json(stripeSession, {
       status: 200,
       statusText: 'Payment session created',
     });
-  } catch (error: any) {
-    console.log('Payment failed', error);
-    return new NextResponse(JSON.stringify({ message: error.message || 'An unexpected error occurred' }), { status: 500 });
+  } catch (error: unknown) {
+    console.error('Payment failed:', error);
+
+    // Return a meaningful error message based on the error type
+    if (error instanceof Error) {
+      return new NextResponse(JSON.stringify({ message: error.message }), { status: 500 });
+    }
+
+    // Fallback error response for unknown error types
+    return new NextResponse(JSON.stringify({ message: 'An unexpected error occurred' }), { status: 500 });
   }
 }
