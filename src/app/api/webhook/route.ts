@@ -34,10 +34,9 @@ export async function POST(req: Request) {
     case checkout_session_completed:
       const session = event.data.object;
 
-      // Check if metadata exists
       const metadata = session.metadata;
       if (!metadata) {
-        return new NextResponse('Metadata is missing', { status: 400 });
+        return new NextResponse('Metadata is missing in the session', { status: 400 });
       }
 
       const {
