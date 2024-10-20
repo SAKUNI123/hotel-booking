@@ -6,10 +6,10 @@ import { createBooking, updateHotelRoom } from '@/libs/apis';
 const checkout_session_completed = 'checkout.session.completed';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2023-08-16',
+  apiVersion: '2024-09-30.acacia',
 });
 
-export async function POST(req: Request, res: Response) {
+export async function POST(req: Request) {
   const reqBody = await req.text();
   const sig = req.headers.get('stripe-signature');
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -17,19 +17,23 @@ export async function POST(req: Request, res: Response) {
   let event: Stripe.Event;
 
   try {
-    if (!sig || !webhookSecret) return;
+    if (!sig || !webhookSecret) {
+      return new NextResponse('Missing webhook signature or secret', { status: 400 });
+    }
+    
     event = stripe.webhooks.constructEvent(reqBody, sig, webhookSecret);
   } catch (error: any) {
     return new NextResponse(`Webhook Error: ${error.message}`, { status: 500 });
   }
 
-  // load our event
+  // Process the event
   switch (event.type) {
     case checkout_session_completed:
       const session = event.data.object;
 
       const {
-        // @ts-ignore
+        // @ts-expect-error
+
         metadata: {
           adults,
           checkinDate,
@@ -55,7 +59,7 @@ export async function POST(req: Request, res: Response) {
         user,
       });
 
-      //   Update hotel Room
+      // Update hotel Room
       await updateHotelRoom(hotelRoom);
 
       return NextResponse.json('Booking successful', {

@@ -9,43 +9,55 @@ import {
   updateReview,
 } from '@/libs/apis';
 
-export async function GET(req: Request, res: Response) {
+// Handle GET request
+export async function GET(req: Request) {
+  // Fetch session
   const session = await getServerSession(authOptions);
 
+  // If user is not authenticated
   if (!session) {
-    return new NextResponse('Authentication Required', { status: 500 });
+    return new NextResponse('Authentication Required', { status: 401 });
   }
 
   const userId = session.user.id;
 
   try {
+    // Fetch user data
     const data = await getUserData(userId);
     return NextResponse.json(data, { status: 200, statusText: 'Successful' });
   } catch (error) {
-    return new NextResponse('Unable to fetch', { status: 400 });
+    console.error('Error fetching user data:', error);
+    return new NextResponse('Unable to fetch user data', { status: 500 });
   }
 }
 
-export async function POST(req: Request, res: Response) {
+// Handle POST request
+export async function POST(req: Request) {
+  // Fetch session
   const session = await getServerSession(authOptions);
 
+  // If user is not authenticated
   if (!session) {
-    return new NextResponse('Authentication Required', { status: 500 });
+    return new NextResponse('Authentication Required', { status: 401 });
   }
-
-  const { roomId, reviewText, ratingValue } = await req.json();
-
-  if (!roomId || !reviewText || !ratingValue) {
-    return new NextResponse('All fields are required', { status: 400 });
-  }
-
-  const userId = session.user.id;
 
   try {
+    // Parse the request body
+    const { roomId, reviewText, ratingValue } = await req.json();
+
+    // Check if all required fields are provided
+    if (!roomId || !reviewText || !ratingValue) {
+      return new NextResponse('All fields are required', { status: 400 });
+    }
+
+    const userId = session.user.id;
+
+    // Check if the user has already reviewed this room
     const alreadyExists = await checkReviewExists(userId, roomId);
 
     let data;
 
+    // Update review if it exists, otherwise create a new one
     if (alreadyExists) {
       data = await updateReview({
         reviewId: alreadyExists._id,
@@ -63,7 +75,7 @@ export async function POST(req: Request, res: Response) {
 
     return NextResponse.json(data, { status: 200, statusText: 'Successful' });
   } catch (error: any) {
-    console.log('Error Updating', error);
-    return new NextResponse('Unable to create review', { status: 400 });
+    console.error('Error creating/updating review:', error);
+    return new NextResponse('Unable to create or update review', { status: 500 });
   }
 }

@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2024-09-30.acacia',
+  apiVersion: '2024-09-30.acacia', // Ensure this version is correct
 });
 
 type RequestData = {
@@ -64,7 +64,7 @@ export async function POST(req: Request, res: Response) {
             currency: 'LKR',
             product_data: {
               name: room.name,
-              images: room.images.map(image => image.url),
+              images: room.images?.map(image => image.url) || [],
             },
             unit_amount: parseInt((totalPrice * 100).toString()),
           },
@@ -81,8 +81,8 @@ export async function POST(req: Request, res: Response) {
         numberOfDays,
         user: userId,
         discount: room.discount,
-        totalPrice
-      }
+        totalPrice,
+      },
     });
 
     return NextResponse.json(stripeSession, {
@@ -90,7 +90,7 @@ export async function POST(req: Request, res: Response) {
       statusText: 'Payment session created',
     });
   } catch (error: any) {
-    console.log('Payment falied', error);
-    return new NextResponse(error, { status: 500 });
+    console.log('Payment failed', error);
+    return new NextResponse(JSON.stringify({ message: error.message || 'An unexpected error occurred' }), { status: 500 });
   }
 }
