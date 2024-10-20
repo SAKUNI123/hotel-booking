@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-
 import { createBooking, updateHotelRoom } from '@/libs/apis';
-
-const checkout_session_completed = 'checkout.session.completed';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: '2024-09-30.acacia',
 });
+
+const checkout_session_completed = 'checkout.session.completed';
 
 export async function POST(req: Request) {
   const reqBody = await req.text();
@@ -24,6 +23,7 @@ export async function POST(req: Request) {
     event = stripe.webhooks.constructEvent(reqBody, sig, webhookSecret);
   } catch (error: unknown) {
     if (error instanceof Error) {
+      console.error(`Webhook Error: ${error.message}`);
       return new NextResponse(`Webhook Error: ${error.message}`, { status: 500 });
     }
     return new NextResponse('Webhook Error: An unknown error occurred', { status: 500 });
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   // Process the event
   switch (event.type) {
     case checkout_session_completed:
-      const session = event.data.object;
+      const session = event.data.object as Stripe.Checkout.Session;
 
       const metadata = session.metadata;
       if (!metadata) {
@@ -51,32 +51,33 @@ export async function POST(req: Request) {
         totalPrice,
       } = metadata;
 
-      await createBooking({
-        adults: Number(adults),
-        checkinDate,
-        checkoutDate,
-        children: Number(children),
-        hotelRoom,
-        numberOfDays: Number(numberOfDays),
-        discount: Number(discount),
-        totalPrice: Number(totalPrice),
-        user,
-      });
+      try {
+        await createBooking({
+          adults: Number(adults),
+          checkinDate,
+          checkoutDate,
+          children: Number(children),
+          hotelRoom,
+          numberOfDays: Number(numberOfDays),
+          discount: Number(discount),
+          totalPrice: Number(totalPrice),
+          user,
+        });
 
-      // Update hotel Room
-      await updateHotelRoom(hotelRoom);
+        // Update hotel room status
+        await updateHotelRoom(hotelRoom);
 
-      return NextResponse.json('Booking successful', {
-        status: 200,
-        statusText: 'Booking Successful',
-      });
+        return NextResponse.json('Booking successful', {
+          status: 200,
+          statusText: 'Booking Successful',
+        });
+      } catch (bookingError) {
+        console.error(`Booking Error: ${bookingError}`);
+        return new NextResponse('Failed to create booking', { status: 500 });
+      }
 
     default:
       console.log(`Unhandled event type ${event.type}`);
+      return new NextResponse(`Unhandled event type: ${event.type}`, { status: 200 });
   }
-
-  return NextResponse.json('Event Received', {
-    status: 200,
-    statusText: 'Event Received',
-  });
 }
